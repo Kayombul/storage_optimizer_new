@@ -97,14 +97,20 @@ class DatabaseService {
     await db.insert('storage_snapshots', snapshot.toMap());
   }
 
+  /// Returns the most recent [limit] snapshots, oldest first.
+  ///
+  /// Ordering ASC before applying the limit would return the *oldest* rows once
+  /// the table grows past [limit], so the forecast would be computed from stale
+  /// history and stop reacting to current usage. Take the newest rows first,
+  /// then flip them back into chronological order for the regression.
   Future<List<StorageSnapshot>> getSnapshots({int limit = 90}) async {
     final db = await database;
     final maps = await db.query(
       'storage_snapshots',
-      orderBy: 'timestamp ASC',
+      orderBy: 'timestamp DESC',
       limit: limit,
     );
-    return maps.map(StorageSnapshot.fromMap).toList();
+    return maps.reversed.map(StorageSnapshot.fromMap).toList();
   }
 
   Future<StorageSnapshot?> getLatestSnapshot() async {

@@ -43,9 +43,11 @@ class ForecastCard extends StatelessWidget {
               children: [
                 Icon(statusIcon, color: statusColor, size: 20),
                 const SizedBox(width: 8),
-                Text(
-                  'Storage Forecast',
-                  style: textTheme.titleSmall?.copyWith(color: statusColor),
+                Flexible(
+                  child: Text(
+                    'Storage Forecast',
+                    style: textTheme.titleSmall?.copyWith(color: statusColor),
+                  ),
                 ),
               ],
             ),
@@ -54,11 +56,17 @@ class ForecastCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.baseline,
               textBaseline: TextBaseline.alphabetic,
               children: [
-                Text(
-                  forecast.daysLabel,
-                  style: textTheme.displaySmall?.copyWith(
-                    fontWeight: FontWeight.bold,
-                    color: statusColor,
+                // The label is a headline number ("28 days") for a growing
+                // device but a full phrase ("Storage not growing") otherwise,
+                // which overruns the row at displaySmall. Let it wrap instead
+                // of overflowing.
+                Flexible(
+                  child: Text(
+                    forecast.daysLabel,
+                    style: textTheme.displaySmall?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      color: statusColor,
+                    ),
                   ),
                 ),
                 if (forecast.hasEnoughData && forecast.daysUntilFull > 0) ...[
@@ -77,13 +85,32 @@ class ForecastCard extends StatelessWidget {
                 Icon(Icons.trending_up,
                     size: 16, color: scheme.onSurfaceVariant),
                 const SizedBox(width: 4),
-                Text(
-                  'Growth: ${forecast.growthLabel}',
-                  style: textTheme.bodySmall
-                      ?.copyWith(color: scheme.onSurfaceVariant),
+                Expanded(
+                  child: Text(
+                    'Growth: ${forecast.growthLabel}',
+                    style: textTheme.bodySmall
+                        ?.copyWith(color: scheme.onSurfaceVariant),
+                  ),
                 ),
               ],
             ),
+            if (!forecast.hasEnoughData) ...[
+              const SizedBox(height: 4),
+              Row(
+                children: [
+                  Icon(Icons.schedule_outlined,
+                      size: 14, color: scheme.onSurfaceVariant),
+                  const SizedBox(width: 4),
+                  Expanded(
+                    child: Text(
+                      forecast.collectingHint,
+                      style: textTheme.labelSmall
+                          ?.copyWith(color: scheme.onSurfaceVariant),
+                    ),
+                  ),
+                ],
+              ),
+            ],
             if (forecast.hasEnoughData) ...[
               const SizedBox(height: 4),
               Row(

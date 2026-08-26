@@ -1,6 +1,7 @@
 import 'dart:math';
 import 'package:flutter/services.dart';
 import '../models/file_metadata.dart';
+import '../utils/duration_text.dart';
 
 /// Scores each file with a composite value metric using numpy running
 /// on-device via Chaquopy (Python embedded in the APK).
@@ -90,7 +91,7 @@ class ValueScoringService {
 
   String _reason(double r, double f, double s, int days) {
     final parts = <String>[];
-    if (r < 0.30) parts.add('not accessed in $days days');
+    if (r < 0.30) parts.add('not accessed in ${dayCount(days)}');
     if (f < 0.10) parts.add('rarely opened');
     if (s > 0.70) parts.add('large file');
     return parts.isEmpty ? 'low overall utility' : parts.join(', ');

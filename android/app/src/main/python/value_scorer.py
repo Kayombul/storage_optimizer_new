@@ -44,6 +44,13 @@ def score_files(days_since_access, access_counts, size_bytes):
             reasons    : list[str]    – short human-readable explanation
     """
     try:
+        # Chaquopy passes Java collections as proxy objects that numpy cannot
+        # consume. Convert to Python lists first — see the same note in
+        # storage_predictor.forecast().
+        days_since_access = [float(d) for d in days_since_access]
+        access_counts = [float(c) for c in access_counts]
+        size_bytes = [float(s) for s in size_bytes]
+
         if not days_since_access:
             return {"scores": [], "recommended": [], "reasons": []}
 
@@ -84,12 +91,21 @@ def score_files(days_since_access, access_counts, size_bytes):
         }
 
 
+def _day_count(days):
+    """Mirrors dayCount() in lib/utils/duration_text.dart.
+
+    The two engines must produce identical reason strings, otherwise the text
+    the user sees changes depending on whether the Python bridge started.
+    """
+    return "1 day" if days == 1 else f"{days} days"
+
+
 def _build_reasons(recency, freq, size_norm, days_int):
     reasons = []
     for r, f, s, d in zip(recency, freq, size_norm, days_int):
         parts = []
         if r < 0.30:
-            parts.append(f"not accessed in {d} days")
+            parts.append(f"not accessed in {_day_count(d)}")
         if f < 0.10:
             parts.append("rarely opened")
         if s > 0.70:

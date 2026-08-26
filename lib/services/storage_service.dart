@@ -138,6 +138,84 @@ class StorageService {
     return 'other';
   }
 
+  /// Starts or stops the background watcher that notices new photos, video and
+  /// music while the app is closed, and notifies about them.
+  Future<bool> setMediaWatchEnabled(bool enabled) async {
+    try {
+      final ok = await _channel.invokeMethod<bool>('setMediaWatchEnabled', {
+        'enabled': enabled,
+      });
+      return ok ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<bool> isMediaWatchEnabled() async {
+    try {
+      return await _channel.invokeMethod<bool>('isMediaWatchEnabled') ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Runs the watcher once, now, instead of waiting for its next turn.
+  Future<bool> checkMediaNow() async {
+    try {
+      return await _channel.invokeMethod<bool>('checkMediaNow') ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Renders a preview image for a file Flutter cannot decode itself: a frame
+  /// from a video, the embedded album art of a track, or the first page of a
+  /// PDF. Returns null when the platform has nothing to show (for example a
+  /// track with no artwork), so callers can fall back to a placeholder.
+  Future<Uint8List?> getThumbnail(String path, {int maxSize = 512}) async {
+    try {
+      return await _channel.invokeMethod<Uint8List>('getThumbnail', {
+        'path': path,
+        'maxSize': maxSize,
+      });
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Duration, title, artist, resolution or page count, where the platform can
+  /// supply them. Always returns a map, empty if nothing could be read.
+  Future<Map<String, String>> getMediaInfo(String path) async {
+    try {
+      final raw = await _channel.invokeMethod<Map>('getMediaInfo', {
+        'path': path,
+      });
+      if (raw == null) return const {};
+      return raw.map((k, v) => MapEntry(k.toString(), v.toString()));
+    } catch (_) {
+      return const {};
+    }
+  }
+
+  static const _textExts = {'txt', 'csv', 'log', 'json', 'xml', 'md'};
+
+  /// Reads the head of a text-like file so it can be shown in the preview
+  /// screen. Returns null for binary formats (pdf, docx, ...) or unreadable
+  /// files, so callers can fall back to a placeholder.
+  Future<String?> readTextPreview(String path, {int maxChars = 2000}) async {
+    final ext = path.split('.').last.toLowerCase();
+    if (!_textExts.contains(ext)) return null;
+    try {
+      final file = File(path);
+      if (!await file.exists()) return null;
+      final content = await file.readAsString();
+      if (content.length <= maxChars) return content;
+      return '${content.substring(0, maxChars)}\n\n... (truncated)';
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<bool> deleteFile(String path) async {
     try {
       final file = File(path);

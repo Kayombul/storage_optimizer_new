@@ -29,6 +29,14 @@ def forecast(timestamps, used_bytes, total_bytes):
         r2               (float) : coefficient of determination
     """
     try:
+        # Chaquopy hands Java collections across as proxy objects, not Python
+        # lists: len() and numpy both reject them. Convert before doing anything
+        # else, or every call fails with
+        # "TypeError: object of type 'ArrayList' has no len()".
+        timestamps = [float(t) for t in timestamps]
+        used_bytes = [float(u) for u in used_bytes]
+        total_bytes = float(total_bytes)
+
         if len(timestamps) < 3:
             return _no_data("insufficient_data")
 

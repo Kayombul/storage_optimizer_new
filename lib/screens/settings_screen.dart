@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/database_service.dart';
 import '../services/notification_service.dart';
+import '../services/storage_service.dart';
+import '../utils/duration_text.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -13,6 +15,7 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   int _alertDays = 14;
   bool _loading = true;
+  bool _mediaWatch = false;
 
   @override
   void initState() {
@@ -22,11 +25,41 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _load() async {
     final prefs = await SharedPreferences.getInstance();
+    final watching = await StorageService.instance.isMediaWatchEnabled();
     if (mounted) {
       setState(() {
         _alertDays = prefs.getInt('alert_days') ?? 14;
+        _mediaWatch = watching;
         _loading = false;
       });
+    }
+  }
+
+  Future<void> _setMediaWatch(bool enabled) async {
+    setState(() => _mediaWatch = enabled);
+    await StorageService.instance.setMediaWatchEnabled(enabled);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('media_watch', enabled);
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(enabled
+              ? 'You will be alerted when new media is added'
+              : 'New media alerts turned off'),
+        ),
+      );
+    }
+  }
+
+  Future<void> _checkMediaNow() async {
+    await StorageService.instance.checkMediaNow();
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Checking for new media, an alert will '
+              'appear if anything was added'),
+        ),
+      );
     }
   }
 
@@ -141,7 +174,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                 borderRadius: BorderRadius.circular(20),
                               ),
                               child: Text(
-                                '$_alertDays days',
+                                dayCount(_alertDays),
                                 style: textTheme.labelLarge?.copyWith(
                                     color: scheme.onPrimaryContainer),
                               ),
@@ -149,7 +182,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           ],
                         ),
                         Text(
-                          'Alert when storage is estimated to fill within $_alertDays days',
+                          'Alert when storage is estimated to fill within '
+                          '${dayCount(_alertDays)}',
                           style: textTheme.bodySmall
                               ?.copyWith(color: scheme.onSurfaceVariant),
                         ),
@@ -158,7 +192,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           min: 1,
                           max: 30,
                           divisions: 29,
-                          label: '$_alertDays days',
+                          label: dayCount(_alertDays),
                           onChanged: (v) => _saveAlertDays(v.round()),
                         ),
                         const SizedBox(height: 4),
@@ -175,6 +209,39 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         ),
                       ],
                     ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Card(
+                  elevation: 0,
+                  color: scheme.surfaceContainerLow,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16)),
+                  clipBehavior: Clip.antiAlias,
+                  child: Column(
+                    children: [
+                      SwitchListTile(
+                        secondary:
+                            const Icon(Icons.perm_media_outlined),
+                        title: const Text('New media alerts'),
+                        subtitle: const Text(
+                            'Watch for new photos, video and music in the '
+                            'background and alert when they arrive'),
+                        value: _mediaWatch,
+                        onChanged: _setMediaWatch,
+                      ),
+                      if (_mediaWatch) ...[
+                        const Divider(height: 1, indent: 56),
+                        ListTile(
+                          leading: const Icon(Icons.search_outlined),
+                          title: const Text('Check for new media now'),
+                          subtitle: const Text(
+                              'Run the watcher without waiting'),
+                          trailing: const Icon(Icons.chevron_right),
+                          onTap: _checkMediaNow,
+                        ),
+                      ],
+                    ],
                   ),
                 ),
                 const SizedBox(height: 8),

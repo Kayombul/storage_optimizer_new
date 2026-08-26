@@ -1,4 +1,5 @@
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import '../utils/duration_text.dart';
 
 class NotificationService {
   static final NotificationService instance = NotificationService._();
@@ -24,6 +25,12 @@ class NotificationService {
           description: _channelDesc,
           importance: Importance.high,
         ));
+    // No-op below Android 13, where notifications need no runtime grant.
+    await _plugin
+        .resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin>()
+        ?.requestNotificationsPermission();
+
     _initialized = true;
   }
 
@@ -34,7 +41,7 @@ class NotificationService {
     await initialize();
     final body = daysUntilFull == 0
         ? 'Storage is full! Free up space immediately.'
-        : 'Storage fills in $daysUntilFull days. '
+        : 'Storage fills in ${dayCount(daysUntilFull)}. '
             '${usedPercent.toStringAsFixed(0)}% used.';
 
     await _plugin.show(

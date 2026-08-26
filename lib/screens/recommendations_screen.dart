@@ -3,6 +3,7 @@ import '../models/file_metadata.dart';
 import '../services/database_service.dart';
 import '../services/storage_service.dart';
 import '../widgets/file_tile.dart';
+import 'file_preview_screen.dart';
 
 class RecommendationsScreen extends StatefulWidget {
   const RecommendationsScreen({super.key});
@@ -50,7 +51,7 @@ class _RecommendationsScreenState extends State<RecommendationsScreen> {
     return _filtered.fold(0, (sum, f) => sum + f.sizeBytes);
   }
 
-  Future<void> _deleteFile(FileMetadata file) async {
+  Future<bool> _deleteFile(FileMetadata file) async {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -69,7 +70,7 @@ class _RecommendationsScreenState extends State<RecommendationsScreen> {
       ),
     );
 
-    if (confirm != true) return;
+    if (confirm != true) return false;
 
     final deleted = await StorageService.instance.deleteFile(file.path);
     if (deleted) {
@@ -92,6 +93,24 @@ class _RecommendationsScreenState extends State<RecommendationsScreen> {
         );
       }
     }
+    return deleted;
+  }
+
+  /// Opens the full-screen preview, starting on the tapped file and letting
+  /// the user swipe through the rest of the shown recommendations.
+  Future<void> _openPreview(int index) async {
+    final shown = _filtered;
+    if (shown.isEmpty) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => FilePreviewScreen(
+          files: shown,
+          initialIndex: index,
+          onDelete: _deleteFile,
+          onKeep: _keepFile,
+        ),
+      ),
+    );
   }
 
   void _keepFile(FileMetadata file) {
@@ -157,6 +176,12 @@ class _RecommendationsScreenState extends State<RecommendationsScreen> {
       appBar: AppBar(
         title: const Text('Recommendations'),
         actions: [
+          if (shown.isNotEmpty)
+            IconButton(
+              icon: const Icon(Icons.visibility_outlined),
+              tooltip: 'Preview all shown',
+              onPressed: () => _openPreview(0),
+            ),
           if (shown.isNotEmpty)
             IconButton(
               icon: const Icon(Icons.delete_sweep_outlined),
@@ -251,6 +276,7 @@ class _RecommendationsScreenState extends State<RecommendationsScreen> {
                             file: shown[i],
                             onDelete: () => _deleteFile(shown[i]),
                             onKeep: () => _keepFile(shown[i]),
+                            onPreview: () => _openPreview(i),
                           ),
                         ),
                 ),

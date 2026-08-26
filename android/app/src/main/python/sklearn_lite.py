@@ -74,6 +74,21 @@ class LinearRegression:
             X = X.reshape(-1, 1)
         return X @ self.coef_ + self.intercept_
 
+    def score(self, X, y):
+        """Coefficient of determination R^2, matching sklearn's semantics.
+
+        storage_predictor.forecast() calls this. Without it the call raised
+        AttributeError, the whole forecast fell into its except branch, and the
+        engine silently returned zeroed metrics for every reading.
+        """
+        y = np.asarray(y, dtype=float)
+        y_pred = self.predict(X)
+        ss_res = float(np.sum((y - y_pred) ** 2))
+        ss_tot = float(np.sum((y - np.mean(y)) ** 2))
+        if ss_tot == 0:
+            return 1.0 if ss_res == 0 else 0.0
+        return 1.0 - ss_res / ss_tot
+
 
 def mean_absolute_error(y_true, y_pred):
     y_true = np.asarray(y_true, dtype=float)

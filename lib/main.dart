@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'services/notification_service.dart';
+import 'services/storage_service.dart';
 import 'screens/dashboard_screen.dart';
 import 'screens/recommendations_screen.dart';
 import 'screens/history_screen.dart';
@@ -9,10 +11,26 @@ import 'screens/settings_screen.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await NotificationService.instance.initialize();
+  await _startMediaWatch();
   SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
     statusBarColor: Colors.transparent,
   ));
   runApp(const StorageOptimizerApp());
+}
+
+/// Proactive alerts are the point of the app, so the background watcher is on
+/// by default. Re-scheduling an already-scheduled worker is a no-op, so this is
+/// safe to call on every launch; the user can turn it off in Settings.
+Future<void> _startMediaWatch() async {
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    if (prefs.getBool('media_watch') ?? true) {
+      await StorageService.instance.setMediaWatchEnabled(true);
+      await prefs.setBool('media_watch', true);
+    }
+  } catch (_) {
+    // Never let alert scheduling stop the app from starting.
+  }
 }
 
 class StorageOptimizerApp extends StatelessWidget {
@@ -110,8 +128,13 @@ class _MainShellState extends State<MainShell>
 
   @override
   Widget build(BuildContext context) {
-    return DefaultTabController(
-      length: _screens.length,
+    // The shell owns the one TabController that actually drives the TabBarView,
+    // and publishes it so screens can switch tabs. Wrapping this in a
+    // DefaultTabController instead would create a *second*, unused controller,
+    // and any screen calling DefaultTabController.of(context) would silently
+    // animate that one while the visible view never moved.
+    return AppTabs(
+      controller: _tabController,
       child: _NavShell(
         tabController: _tabController,
         screens: _screens,
@@ -119,6 +142,28 @@ class _MainShellState extends State<MainShell>
       ),
     );
   }
+}
+
+/// Publishes the shell's TabController so any descendant can switch tabs, e.g.
+/// the dashboard's "View Recommendations" button.
+class AppTabs extends InheritedWidget {
+  final TabController controller;
+
+  const AppTabs({
+    super.key,
+    required this.controller,
+    required super.child,
+  });
+
+  static TabController of(BuildContext context) {
+    final tabs = context.dependOnInheritedWidgetOfExactType<AppTabs>();
+    assert(tabs != null, 'AppTabs.of() called from outside the MainShell');
+    return tabs!.controller;
+  }
+
+  @override
+  bool updateShouldNotify(AppTabs oldWidget) =>
+      controller != oldWidget.controller;
 }
 
 class _NavShell extends StatelessWidget {

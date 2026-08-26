@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../main.dart' show AppTabs;
 import '../models/storage_snapshot.dart';
 import '../models/forecast_result.dart';
 import '../services/database_service.dart';
@@ -18,7 +21,8 @@ class DashboardScreen extends StatefulWidget {
   State<DashboardScreen> createState() => _DashboardScreenState();
 }
 
-class _DashboardScreenState extends State<DashboardScreen> {
+class _DashboardScreenState extends State<DashboardScreen>
+    with WidgetsBindingObserver {
   StorageSnapshot? _latest;
   ForecastResult _forecast = ForecastResult.noData();
   bool _loading = false;
@@ -27,11 +31,54 @@ class _DashboardScreenState extends State<DashboardScreen> {
   int _fileCount = 0;
   int _recommendedCount = 0;
   DateTime? _lastScan;
+  Timer? _pollTimer;
+
+  /// How often the dashboard re-reads device storage while it is on screen, so
+  /// a download that lands outside the app shows up without a manual refresh.
+  static const _pollInterval = Duration(seconds: 20);
+
+  /// A new snapshot is only worth storing if usage actually moved, or if
+  /// enough time passed that the series needs a fresh point. Without this the
+  /// polling above would flood the history and flatten the regression.
+  static const _snapshotInterval = Duration(minutes: 5);
+  static const _snapshotDeltaBytes = 8 * 1024 * 1024;
+
+  /// Keeps the forecast warning from re-firing on every poll.
+  static const _alertCooldown = Duration(hours: 6);
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _load();
+    _pollTimer = Timer.periodic(_pollInterval, (_) => _pollStorage());
+  }
+
+  @override
+  void dispose() {
+    _pollTimer?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Coming back from the Files app or a browser download is exactly when the
+    // numbers on screen are most likely to be stale.
+    if (state == AppLifecycleState.resumed) {
+      _pollStorage();
+      _refreshStats();
+    }
+  }
+
+  /// A quiet refresh: no spinner, no rebuild of the scan statistics.
+  Future<void> _pollStorage() async {
+    if (!mounted || _scanning) return;
+    try {
+      await _refreshStorage();
+    } catch (_) {
+      // A transient StatFs failure should not kill the timer.
+    }
   }
 
   Future<void> _load() async {
@@ -46,7 +93,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   Future<void> _refreshStorage() async {
     final snapshot = await StorageService.instance.getStorageInfo();
-    await DatabaseService.instance.insertSnapshot(snapshot);
+    await _recordSnapshot(snapshot);
     await DatabaseService.instance.pruneOldSnapshots();
 
     final snapshots = await DatabaseService.instance.getSnapshots();
@@ -65,12 +112,36 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final threshold = prefs.getInt('alert_days') ?? 14;
     if (forecast.hasEnoughData &&
         forecast.daysUntilFull >= 0 &&
-        forecast.daysUntilFull <= threshold) {
+        forecast.daysUntilFull <= threshold &&
+        _alertCooldownElapsed(prefs)) {
       await NotificationService.instance.showStorageWarning(
         daysUntilFull: forecast.daysUntilFull,
         usedPercent: snapshot.usedPercent,
       );
+      await prefs.setInt(
+          'last_forecast_alert', DateTime.now().millisecondsSinceEpoch);
     }
+  }
+
+  bool _alertCooldownElapsed(SharedPreferences prefs) {
+    final last = prefs.getInt('last_forecast_alert');
+    if (last == null) return true;
+    final since = DateTime.now()
+        .difference(DateTime.fromMillisecondsSinceEpoch(last));
+    return since >= _alertCooldown;
+  }
+
+  /// Stores a snapshot only when it adds information to the series.
+  Future<void> _recordSnapshot(StorageSnapshot snapshot) async {
+    final latest = await DatabaseService.instance.getLatestSnapshot();
+    if (latest != null) {
+      final moved =
+          (snapshot.usedBytes - latest.usedBytes).abs() >= _snapshotDeltaBytes;
+      final stale =
+          snapshot.timestamp.difference(latest.timestamp) >= _snapshotInterval;
+      if (!moved && !stale) return;
+    }
+    await DatabaseService.instance.insertSnapshot(snapshot);
   }
 
   Future<void> _refreshStats() async {
@@ -286,8 +357,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   const SizedBox(height: 12),
                   if (_fileCount > 0)
                     OutlinedButton.icon(
-                      onPressed: () =>
-                          DefaultTabController.of(context).animateTo(1),
+                      onPressed: () => AppTabs.of(context).animateTo(1),
                       icon: const Icon(Icons.list_alt),
                       label: Text(
                           'View $_recommendedCount Recommendations'),
