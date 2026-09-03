@@ -19,10 +19,41 @@ class _RecommendationsScreenState extends State<RecommendationsScreen> {
 
   static const _types = ['all', 'image', 'video', 'audio', 'document'];
 
+  /// Index of this screen within the shell's tab bar.
+  static const _tabIndex = 1;
+  TabController? _tabs;
+
   @override
   void initState() {
     super.initState();
     _load();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // The shell keeps this screen alive between tab switches, so initState
+    // runs only once. Without this listener the list still shows whatever was
+    // loaded the first time the tab was opened — after a scan it would look
+    // as though navigating here did nothing.
+    final controller = DefaultTabController.maybeOf(context);
+    if (controller != _tabs) {
+      _tabs?.removeListener(_onTabChanged);
+      _tabs = controller;
+      _tabs?.addListener(_onTabChanged);
+    }
+  }
+
+  void _onTabChanged() {
+    final c = _tabs;
+    if (c == null || c.indexIsChanging) return;
+    if (c.index == _tabIndex) _load();
+  }
+
+  @override
+  void dispose() {
+    _tabs?.removeListener(_onTabChanged);
+    super.dispose();
   }
 
   Future<void> _load() async {

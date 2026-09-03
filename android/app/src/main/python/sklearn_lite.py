@@ -74,6 +74,22 @@ class LinearRegression:
             X = X.reshape(-1, 1)
         return X @ self.coef_ + self.intercept_
 
+    def score(self, X, y):
+        """
+        Coefficient of determination R^2, matching
+        sklearn.linear_model.LinearRegression.score.
+
+        R^2 = 1 - SS_res / SS_tot.  A constant target has zero variance, so
+        SS_tot is 0: return 1.0 for a perfect fit, else 0.0, as sklearn does.
+        """
+        y = np.asarray(y, dtype=float)
+        y_pred = self.predict(X)
+        ss_res = float(np.sum((y - y_pred) ** 2))
+        ss_tot = float(np.sum((y - np.mean(y)) ** 2))
+        if ss_tot == 0.0:
+            return 1.0 if ss_res == 0.0 else 0.0
+        return 1.0 - ss_res / ss_tot
+
 
 def mean_absolute_error(y_true, y_pred):
     y_true = np.asarray(y_true, dtype=float)

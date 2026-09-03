@@ -55,15 +55,19 @@ class MainActivity : FlutterActivity() {
                             val module = py.getModule("storage_predictor")
                             val res    = module.callAttr("forecast", timestamps, usedBytes, totalBytes)
 
-                            result.success(
-                                mapOf(
-                                    "daysUntilFull"    to (res["days_until_full"]?.toInt()    ?: -1),
-                                    "dailyGrowthBytes" to (res["daily_growth_bytes"]?.toDouble() ?: 0.0),
-                                    "mae"              to (res["mae"]?.toDouble()              ?: 0.0),
-                                    "rmse"             to (res["rmse"]?.toDouble()             ?: 0.0),
-                                    "r2"               to (res["r2"]?.toDouble()               ?: 0.0),
-                                )
+                            val out = mutableMapOf<String, Any?>(
+                                "daysUntilFull"    to (res["days_until_full"]?.toInt()    ?: -1),
+                                "dailyGrowthBytes" to (res["daily_growth_bytes"]?.toDouble() ?: 0.0),
+                                "mae"              to (res["mae"]?.toDouble()              ?: 0.0),
+                                "rmse"             to (res["rmse"]?.toDouble()             ?: 0.0),
+                                "r2"               to (res["r2"]?.toDouble()               ?: 0.0),
                             )
+                            // Forward the failure flag. storage_predictor returns
+                            // all-zero values plus "error" when its fit throws;
+                            // dropping the flag here made those zeros look like a
+                            // valid forecast and defeated the Dart fallback.
+                            res["error"]?.let { out["error"] = it.toString() }
+                            result.success(out)
                         } catch (e: Exception) {
                             result.error("FORECAST_ERROR", e.message, null)
                         }

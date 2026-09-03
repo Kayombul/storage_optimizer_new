@@ -15,6 +15,9 @@ import numpy as np
 from sklearn_lite import LinearRegression, mean_absolute_error, mean_squared_error
 import math
 
+# Longest horizon worth reporting (10 years).
+_MAX_HORIZON_DAYS = 3650
+
 
 def forecast(timestamps, used_bytes, total_bytes):
     """
@@ -52,7 +55,13 @@ def forecast(timestamps, used_bytes, total_bytes):
             if remaining <= 0:
                 days_until_full = 0
             else:
-                days_until_full = int(math.ceil(remaining / slope))
+                horizon = remaining / slope
+                # A flat series still leaves floating-point noise in the
+                # slope (~1e-15 bytes/day), which would yield an astronomical
+                # horizon. Anything past _MAX_HORIZON_DAYS is reported as
+                # "not growing" rather than a meaningless number.
+                if math.isfinite(horizon) and horizon <= _MAX_HORIZON_DAYS:
+                    days_until_full = int(math.ceil(horizon))
 
         return {
             "days_until_full": days_until_full,

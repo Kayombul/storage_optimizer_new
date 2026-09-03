@@ -11,15 +11,36 @@ class StorageService {
   static const _channel =
       MethodChannel('com.example.storage_optimizer/storage');
 
+  static const _root = '/storage/emulated/0';
+
+  /// Standard Android media directories. Names must match
+  /// `android.os.Environment.DIRECTORY_*` exactly — note `Download`
+  /// is singular.
   static const _scanDirs = [
-    '/storage/emulated/0/DCIM',
-    '/storage/emulated/0/Pictures',
-    '/storage/emulated/0/Downloads',
-    '/storage/emulated/0/Movies',
-    '/storage/emulated/0/Music',
-    '/storage/emulated/0/Documents',
-    '/storage/emulated/0/WhatsApp/Media',
+    '$_root/DCIM',
+    '$_root/Pictures',
+    '$_root/Download',
+    '$_root/Movies',
+    '$_root/Music',
+    '$_root/Documents',
+    '$_root/Podcasts',
+    '$_root/Audiobooks',
+    '$_root/Recordings',
+    // WhatsApp pre-Android 11 and Android 11+ scoped-storage locations.
+    '$_root/WhatsApp/Media',
+    '$_root/Android/media/com.whatsapp/WhatsApp/Media',
+    '$_root/Telegram',
   ];
+
+  /// Excluded from the whole-volume fallback sweep: app sandboxes are
+  /// unreadable without special access and hold no user-deletable media.
+  static const _fallbackSkip = [
+    '$_root/Android/data',
+    '$_root/Android/obb',
+  ];
+
+  /// Guards against pathological or symlink-looping directory trees.
+  static const _maxDepth = 12;
 
   Future<StorageSnapshot> getStorageInfo() async {
     try {
@@ -87,34 +108,74 @@ class StorageService {
     void Function(int scanned)? onProgress,
   }) async {
     final files = <FileMetadata>[];
-    int count = 0;
+    final seen = <String>{};
+
     for (final dirPath in _scanDirs) {
-      final dir = Directory(dirPath);
-      if (!await dir.exists()) continue;
-      try {
-        await for (final entity
-            in dir.list(recursive: true, followLinks: false)) {
-          if (entity is! File) continue;
-          try {
-            final stat = await entity.stat();
-            if (stat.size == 0) continue;
-            files.add(FileMetadata(
-              path: entity.path,
-              name: entity.uri.pathSegments.last,
-              sizeBytes: stat.size,
-              fileType: _detectType(entity.path),
-              createdAt: stat.changed,
-              lastAccessedAt: stat.modified,
-              accessCount: 1,
-            ));
-            count++;
-            if (count % 100 == 0) onProgress?.call(count);
-          } catch (_) {}
-        }
-      } catch (_) {}
+      await _collect(Directory(dirPath), files, seen, onProgress);
     }
-    onProgress?.call(count);
+
+    // Fallback: if none of the standard directories yielded anything (unusual
+    // vendor layout, media kept at the volume root), sweep the whole volume so
+    // a scan never comes back empty on a device that does have files.
+    if (files.isEmpty) {
+      await _collect(Directory(_root), files, seen, onProgress,
+          skip: _fallbackSkip);
+    }
+
+    onProgress?.call(files.length);
     return files;
+  }
+
+  /// Walks [dir] one level at a time, recursing manually.
+  ///
+  /// `Directory.list(recursive: true)` aborts its whole stream on the first
+  /// unreadable entry, which would silently truncate a scan at the first
+  /// locked folder. Recursing per directory confines any such failure to that
+  /// subtree.
+  Future<void> _collect(
+    Directory dir,
+    List<FileMetadata> files,
+    Set<String> seen,
+    void Function(int scanned)? onProgress, {
+    List<String> skip = const [],
+    int depth = 0,
+  }) async {
+    if (depth > _maxDepth) return;
+    if (skip.any((s) => dir.path == s || dir.path.startsWith('$s/'))) return;
+    if (!await dir.exists()) return;
+
+    final subDirs = <Directory>[];
+    try {
+      await for (final entity in dir.list(followLinks: false)) {
+        if (entity is Directory) {
+          subDirs.add(entity);
+          continue;
+        }
+        if (entity is! File) continue;
+        if (!seen.add(entity.path)) continue;
+        try {
+          final stat = await entity.stat();
+          if (stat.size == 0) continue;
+          files.add(FileMetadata(
+            path: entity.path,
+            name: entity.uri.pathSegments.last,
+            sizeBytes: stat.size,
+            fileType: _detectType(entity.path),
+            createdAt: stat.changed,
+            lastAccessedAt: stat.modified,
+            accessCount: 1,
+          ));
+          if (files.length % 100 == 0) onProgress?.call(files.length);
+        } catch (_) {}
+      }
+    } catch (_) {
+      // Unreadable directory — keep whatever this level yielded and move on.
+    }
+
+    for (final sub in subDirs) {
+      await _collect(sub, files, seen, onProgress,
+          skip: skip, depth: depth + 1);
+    }
   }
 
   String _detectType(String path) {

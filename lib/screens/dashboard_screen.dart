@@ -117,24 +117,27 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
       final scored = await ValueScoringService.instance.scoreAll(rawFiles);
 
-      // Build deletion plan
-      if (_latest != null) {
-        OptimizationService.instance.generatePlan(
-          files: scored,
-          forecast: _forecast,
-          freeBytes: _latest!.freeBytes,
-          totalBytes: _latest!.totalBytes,
-        );
-      }
+      // Build the ranked deletion plan and flag its members. The snapshot is
+      // fetched here if the dashboard has not loaded one yet, so a scan run
+      // before the first refresh still produces recommendations.
+      final snapshot =
+          _latest ?? await StorageService.instance.getStorageInfo();
+      final planned = OptimizationService.instance.applyPlan(
+        files: scored,
+        forecast: _forecast,
+        freeBytes: snapshot.freeBytes,
+        totalBytes: snapshot.totalBytes,
+      );
 
       await DatabaseService.instance.clearFileMetadata();
-      await DatabaseService.instance.upsertAllFiles(scored);
+      await DatabaseService.instance.upsertAllFiles(planned);
 
       final prefs = await SharedPreferences.getInstance();
       await prefs.setInt(
           'last_scan', DateTime.now().millisecondsSinceEpoch);
 
-      final recommended = scored.where((f) => f.isRecommendedForDeletion).length;
+      final recommended =
+          planned.where((f) => f.isRecommendedForDeletion).length;
       await NotificationService.instance.showScanComplete(
         filesFound: scored.length,
         recommended: recommended,
