@@ -43,3 +43,10 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Local tooling (machine-specific, not part of the project)
+.mcp.json
+.serena/
+
+# Flutter writes local SDK/NDK paths here
+android/local.properties
