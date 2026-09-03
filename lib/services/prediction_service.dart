@@ -15,6 +15,10 @@ class PredictionService {
       MethodChannel('com.example.storage_optimizer/storage');
   static const int _minDataPoints = 3;
 
+  /// Longest horizon worth reporting (10 years). Guards against a near-zero
+  /// slope on a flat series producing an astronomical day count.
+  static const int _maxHorizonDays = 3650;
+
   Future<ForecastResult> forecast(
       List<StorageSnapshot> snapshots, int totalBytes) async {
     if (snapshots.length < _minDataPoints) return ForecastResult.noData();
@@ -68,20 +72,36 @@ class PredictionService {
     final slope = (n * sumXY - sumX * sumY) / denom;
     final intercept = (sumY - slope * sumX) / n;
 
-    double maeSum = 0, rmseSum = 0;
+    double maeSum = 0, rmseSum = 0, ssRes = 0;
     for (int i = 0; i < n; i++) {
       final err = (slope * xs[i] + intercept - ys[i]).abs();
       maeSum += err;
       rmseSum += err * err;
+      ssRes += err * err;
     }
     final mae = maeSum / n;
     final rmse = sqrt(rmseSum / n);
 
+    // Coefficient of determination, so the fallback reports a real fit
+    // quality instead of a hardcoded zero.
+    final meanY = sumY / n;
+    double ssTot = 0;
+    for (int i = 0; i < n; i++) {
+      ssTot += (ys[i] - meanY) * (ys[i] - meanY);
+    }
+    final r2 = ssTot == 0 ? (ssRes == 0 ? 1.0 : 0.0) : 1.0 - ssRes / ssTot;
+
     int daysUntilFull = -1;
     if (slope > 0) {
       final remaining = totalBytes - ys.last;
-      daysUntilFull =
-          remaining <= 0 ? 0 : (remaining / slope).ceil();
+      if (remaining <= 0) {
+        daysUntilFull = 0;
+      } else {
+        final horizon = remaining / slope;
+        if (horizon.isFinite && horizon <= _maxHorizonDays) {
+          daysUntilFull = horizon.ceil();
+        }
+      }
     }
 
     return ForecastResult(
@@ -89,7 +109,7 @@ class PredictionService {
       dailyGrowthBytes: slope > 0 ? slope : 0,
       mae: mae,
       rmse: rmse,
-      r2: 0.0,
+      r2: r2,
     );
   }
 }

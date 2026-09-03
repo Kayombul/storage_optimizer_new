@@ -50,26 +50,40 @@ class ForecastCard extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 12),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.baseline,
-              textBaseline: TextBaseline.alphabetic,
-              children: [
-                Text(
-                  forecast.daysLabel,
-                  style: textTheme.displaySmall?.copyWith(
-                    fontWeight: FontWeight.bold,
-                    color: statusColor,
+            // `daysLabel` is a number for a live forecast ("89 days") but a
+            // full phrase otherwise ("Storage not growing", "Collecting
+            // data…"). At displaySmall the phrases are wider than the card,
+            // so the headline scales down to fit rather than overflowing.
+            // Both parts live in one Text.rich so their baselines align
+            // without a baseline-aligned Row, which FittedBox cannot measure.
+            SizedBox(
+              width: double.infinity,
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: Text.rich(
+                  TextSpan(
+                    children: [
+                      TextSpan(
+                        text: forecast.daysLabel,
+                        style: textTheme.displaySmall?.copyWith(
+                          fontWeight: FontWeight.bold,
+                          color: statusColor,
+                        ),
+                      ),
+                      if (forecast.hasEnoughData &&
+                          forecast.daysUntilFull > 0)
+                        TextSpan(
+                          text: '  until full',
+                          style: textTheme.bodyMedium
+                              ?.copyWith(color: scheme.onSurfaceVariant),
+                        ),
+                    ],
                   ),
+                  maxLines: 1,
+                  softWrap: false,
                 ),
-                if (forecast.hasEnoughData && forecast.daysUntilFull > 0) ...[
-                  const SizedBox(width: 6),
-                  Text(
-                    'until full',
-                    style: textTheme.bodyMedium
-                        ?.copyWith(color: scheme.onSurfaceVariant),
-                  ),
-                ],
-              ],
+              ),
             ),
             const SizedBox(height: 8),
             Row(

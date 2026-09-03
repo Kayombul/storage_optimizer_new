@@ -54,16 +54,8 @@ class StorageOptimizerApp extends StatelessWidget {
   }
 }
 
-class MainShell extends StatefulWidget {
+class MainShell extends StatelessWidget {
   const MainShell({super.key});
-
-  @override
-  State<MainShell> createState() => _MainShellState();
-}
-
-class _MainShellState extends State<MainShell>
-    with SingleTickerProviderStateMixin {
-  late final TabController _tabController;
 
   static const _screens = [
     DashboardScreen(),
@@ -95,57 +87,47 @@ class _MainShellState extends State<MainShell>
     ),
   ];
 
-  @override
-  void initState() {
-    super.initState();
-    _tabController = TabController(length: _screens.length, vsync: this);
-    _tabController.addListener(() => setState(() {}));
-  }
-
-  @override
-  void dispose() {
-    _tabController.dispose();
-    super.dispose();
-  }
-
+  // A single DefaultTabController owns the only TabController in the app.
+  // Previously this widget also created its own controller for the TabBarView,
+  // so `DefaultTabController.of(context).animateTo(...)` from a child screen
+  // drove a controller no widget was listening to and navigation silently did
+  // nothing.
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
       length: _screens.length,
-      child: _NavShell(
-        tabController: _tabController,
-        screens: _screens,
-        navItems: _navItems,
-      ),
+      child: _NavShell(screens: _screens, navItems: _navItems),
     );
   }
 }
 
 class _NavShell extends StatelessWidget {
-  final TabController tabController;
   final List<Widget> screens;
   final List<NavigationDestination> navItems;
 
-  const _NavShell({
-    required this.tabController,
-    required this.screens,
-    required this.navItems,
-  });
+  const _NavShell({required this.screens, required this.navItems});
 
   @override
   Widget build(BuildContext context) {
+    final controller = DefaultTabController.of(context);
+
     return Scaffold(
       body: TabBarView(
-        controller: tabController,
+        controller: controller,
         physics: const NeverScrollableScrollPhysics(),
         children: screens,
       ),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: tabController.index,
-        onDestinationSelected: tabController.animateTo,
-        destinations: navItems,
-        labelBehavior: NavigationDestinationLabelBehavior.onlyShowSelected,
-        height: 64,
+      // Rebuilds the bar whenever the shared controller moves, including when
+      // a child screen navigates programmatically.
+      bottomNavigationBar: AnimatedBuilder(
+        animation: controller,
+        builder: (context, _) => NavigationBar(
+          selectedIndex: controller.index,
+          onDestinationSelected: controller.animateTo,
+          destinations: navItems,
+          labelBehavior: NavigationDestinationLabelBehavior.onlyShowSelected,
+          height: 64,
+        ),
       ),
     );
   }
